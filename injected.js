@@ -61,10 +61,20 @@
     const response = await originalFetch.apply(this, args);
     const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
     if (isTranscriptUrl(url)) {
-      response.clone().arrayBuffer().then(async buf => {
-        const content = await decodeBuffer(buf);
-        emit(url, content);
-      }).catch(() => {});
+      // If URL has isformatjson=true (Teams SharePoint CDN), re-fetch without it
+      // to get plain VTT text instead of the binary JSON format
+      if (url.includes('isformatjson=true')) {
+        const vttUrl = url.replace(/([?&])isformatjson=true&?/, '$1').replace(/[?&]$/, '');
+        originalFetch(vttUrl)
+          .then(r => r.text())
+          .then(text => { if (text) emit(vttUrl, text); })
+          .catch(() => {});
+      } else {
+        response.clone().arrayBuffer().then(async buf => {
+          const content = await decodeBuffer(buf);
+          emit(url, content);
+        }).catch(() => {});
+      }
     }
     return response;
   };
