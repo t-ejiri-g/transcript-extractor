@@ -86,8 +86,10 @@
     // Safe: host_permissions only match HTTPS origins (Teams, Drive) — location.origin is never "null"
     if (event.origin !== location.origin) return;
     if (event.data && event.data.type === 'TRANSCRIPT_DATA') {
-      // Always overwrite with latest — the most recent response is the most complete
-      chrome.storage.local.set({ transcriptData: event.data });
+      // Skip unrecognized binary (format: 'unknown') — only save parseable formats
+      if (event.data.format !== 'unknown') {
+        chrome.storage.local.set({ transcriptData: event.data });
+      }
     }
   });
 
