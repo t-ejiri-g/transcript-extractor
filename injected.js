@@ -28,7 +28,7 @@
     const response = await originalFetch.apply(this, args);
     const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
     if (isTranscriptUrl(url)) {
-      response.clone().text().then(text => emit(url, text));
+      response.clone().text().then(text => emit(url, text)).catch(() => {});
     }
     return response;
   };
@@ -39,11 +39,13 @@
 
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this._transcriptUrl = String(url);
+    this._transcriptListenerAdded = false;
     return originalOpen.apply(this, [method, url, ...rest]);
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
-    if (isTranscriptUrl(this._transcriptUrl || '')) {
+    if (isTranscriptUrl(this._transcriptUrl || '') && !this._transcriptListenerAdded) {
+      this._transcriptListenerAdded = true;
       this.addEventListener('load', function () {
         emit(this._transcriptUrl, this.responseText);
       });
