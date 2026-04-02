@@ -31,6 +31,9 @@
       if (data.format === 'vtt') {
         const cues = parseVTT(data.content);
         text = formatTranscript(cues);
+      } else if (data.format === 'pb3') {
+        const cues = parseGoogleCaption(data.content);
+        text = cues ? formatTranscript(cues) : data.content;
       } else {
         // Fallback: save raw content as-is
         text = data.content;

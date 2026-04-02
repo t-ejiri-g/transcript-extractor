@@ -65,7 +65,27 @@ function generateFilename() {
   return `transcript_${date}_${time}.txt`;
 }
 
+// Parse Google Drive caption format (wireMagic: "pb3")
+function parseGoogleCaption(jsonText) {
+  try {
+    const data = JSON.parse(jsonText);
+    if (data.wireMagic !== 'pb3') return null;
+    const pad = n => String(n).padStart(2, '0');
+    return (data.events || [])
+      .filter(ev => ev.segs && ev.tStartMs != null)
+      .map(ev => {
+        const ms = ev.tStartMs;
+        const timestamp = `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor((ms % 3600000) / 60000))}:${pad(Math.floor((ms % 60000) / 1000))}`;
+        const text = (ev.segs || []).map(seg => seg.utf8 || '').join('').trim();
+        return text ? { timestamp, speaker: null, text } : null;
+      })
+      .filter(Boolean);
+  } catch (e) {
+    return null;
+  }
+}
+
 // Export for Node.js tests; no-op in browser (global scope)
 if (typeof module !== 'undefined') {
-  module.exports = { isTranscriptUrl, parseVTT, formatTranscript, generateFilename };
+  module.exports = { isTranscriptUrl, parseVTT, formatTranscript, generateFilename, parseGoogleCaption };
 }

@@ -15,7 +15,37 @@
     if (url.includes('.vtt') || content.trimStart().startsWith('WEBVTT')) {
       return 'vtt';
     }
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.wireMagic === 'pb3') return 'pb3';
+    } catch (e) {}
     return 'unknown';
+  }
+
+  async function decodeBuffer(buffer) {
+    const bytes = new Uint8Array(buffer);
+    // If gzip magic bytes (1f 8b), decompress first
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+      try {
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+        writer.write(bytes);
+        writer.close();
+        const chunks = [];
+        const reader = ds.readable.getReader();
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        const total = chunks.reduce((n, c) => n + c.length, 0);
+        const merged = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { merged.set(c, off); off += c.length; }
+        return new TextDecoder().decode(merged);
+      } catch (e) { /* fall through to plain decode */ }
+    }
+    return new TextDecoder().decode(bytes);
   }
 
   function emit(url, content) {
@@ -31,7 +61,10 @@
     const response = await originalFetch.apply(this, args);
     const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
     if (isTranscriptUrl(url)) {
-      response.clone().text().then(text => emit(url, text)).catch(() => {});
+      response.clone().arrayBuffer().then(async buf => {
+        const content = await decodeBuffer(buf);
+        emit(url, content);
+      }).catch(() => {});
     }
     return response;
   };
