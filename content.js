@@ -31,11 +31,13 @@
         };
 
         let prevMax = 0, stuck = 0;
-        for (let i = 0; i < 300; i++) {
+        const pageSize = scroller.clientHeight || 300;
+        for (let i = 0; i < 500; i++) {
           const { max, setsize } = getMaxPosinset();
           if (setsize > 0 && max >= setsize) break;
-          scroller.scrollTop = scroller.scrollHeight;
-          await new Promise(r => setTimeout(r, 150));
+          // Scroll one page at a time so virtual list renders each section
+          scroller.scrollTop += pageSize;
+          await new Promise(r => setTimeout(r, 200));
           const { max: newMax } = getMaxPosinset();
           if (newMax === prevMax) {
             if (++stuck > 10) break;
