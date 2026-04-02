@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Transcript Extractor",
+  "version": "1.0.0",
+  "description": "Extract transcripts from Microsoft Teams recordings and Google Drive videos",
+  "permissions": [],
+  "host_permissions": [
+    "*://*.microsoft.com/*",
+    "*://*.teams.microsoft.com/*",
+    "*://drive.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.microsoft.com/*",
+        "*://*.teams.microsoft.com/*",
+        "*://drive.google.com/*"
+      ],
+      "js": ["injected.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://*.microsoft.com/*",
+        "*://*.teams.microsoft.com/*",
+        "*://drive.google.com/*"
+      ],
+      "js": ["parser.js", "content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "commands": {
+    "extract-transcript": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Extract and download transcript"
+    }
+  }
+}
