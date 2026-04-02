@@ -20,14 +20,22 @@
       const scroller = (container && container !== document.body) ? container : null;
 
       if (scroller) {
-const pageSize = scroller.clientHeight || 300;
-        let prevScrollTop = -1;
-        for (let i = 0; i < 500; i++) {
-          scroller.scrollTop += pageSize;
-          await new Promise(r => setTimeout(r, 200));
-          // Stop when scroll position no longer advances (reached physical bottom)
-          if (scroller.scrollTop === prevScrollTop) break;
-          prevScrollTop = scroller.scrollTop;
+        // Guard against parallel scroll loops (e.g. duplicate message listeners)
+        if (scroller._scraping) return null;
+        scroller._scraping = true;
+
+        try {
+          const pageSize = scroller.clientHeight || 300;
+          let prevScrollTop = -1;
+          for (let i = 0; i < 500; i++) {
+            scroller.scrollTop += pageSize;
+            await new Promise(r => setTimeout(r, 200));
+            // Stop when scroll position no longer advances (reached physical bottom)
+            if (scroller.scrollTop === prevScrollTop) break;
+            prevScrollTop = scroller.scrollTop;
+          }
+        } finally {
+          scroller._scraping = false;
         }
       }
     }
@@ -85,7 +93,7 @@ const pageSize = scroller.clientHeight || 300;
       if (message.action !== 'download') return;
       scrapeTeamsTranscript().then(function (cues) {
         if (!cues) return;
-        // DOM-scraped content overwrites any binary network capture
+        // DOM-scraped content overwrites any network capture
         chrome.storage.local.set({
           transcriptData: { format: 'dom', content: formatTranscript(cues) }
         });
@@ -98,30 +106,33 @@ const pageSize = scroller.clientHeight || 300;
   chrome.runtime.onMessage.addListener(function (message) {
     if (message.action !== 'download') return;
 
-    // Check for network-captured data first (e.g. Google Drive already loaded)
+    // Only use pre-existing network-captured data (pb3/vtt) immediately.
+    // 'dom' format is from a previous scrape — ignore it and wait for a fresh one.
     chrome.storage.local.get(['transcriptData'], function (result) {
-      if (result.transcriptData && result.transcriptData.content) {
-        // Use existing data immediately (network intercept path)
-        triggerDownload(result.transcriptData);
+      const existing = result.transcriptData;
+      if (existing && existing.content && existing.format !== 'dom') {
+        triggerDownload(existing);
         chrome.storage.local.remove('transcriptData');
         return;
       }
 
-      // No network data — poll for iframe DOM scrape result (Teams)
-      let attempts = 0;
-      const poll = setInterval(function () {
-        attempts++;
-        chrome.storage.local.get(['transcriptData'], function (r) {
-          if (r.transcriptData && r.transcriptData.content) {
-            clearInterval(poll);
-            triggerDownload(r.transcriptData);
-            chrome.storage.local.remove('transcriptData');
-          } else if (attempts > 120) {
-            clearInterval(poll);
-            alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
-          }
-        });
-      }, 500);
+      // Clear any stale dom data, then poll for fresh iframe scrape (Teams)
+      chrome.storage.local.remove('transcriptData', function () {
+        let attempts = 0;
+        const poll = setInterval(function () {
+          attempts++;
+          chrome.storage.local.get(['transcriptData'], function (r) {
+            if (r.transcriptData && r.transcriptData.content) {
+              clearInterval(poll);
+              triggerDownload(r.transcriptData);
+              chrome.storage.local.remove('transcriptData');
+            } else if (attempts > 240) {
+              clearInterval(poll);
+              alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
+            }
+          });
+        }, 500);
+      });
     });
   });
 
@@ -134,7 +145,7 @@ const pageSize = scroller.clientHeight || 300;
       const cues = parseGoogleCaption(data.content);
       text = cues ? formatTranscript(cues) : data.content;
     } else {
-      // 'dom' format or unknown: content is already formatted text
+      // 'dom' format: content is already formatted text
       text = data.content;
     }
 
