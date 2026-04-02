@@ -20,31 +20,14 @@
       const scroller = (container && container !== document.body) ? container : null;
 
       if (scroller) {
-        const getMaxPosinset = () => {
-          let max = 0, setsize = 0;
-          scroller.querySelectorAll('[aria-posinset]').forEach(el => {
-            const p = parseInt(el.getAttribute('aria-posinset'), 10);
-            const s = parseInt(el.getAttribute('aria-setsize'), 10);
-            if (!isNaN(p) && p > max) { max = p; setsize = isNaN(s) ? 0 : s; }
-          });
-          return { max, setsize };
-        };
-
-        let prevMax = 0, stuck = 0;
-        const pageSize = scroller.clientHeight || 300;
+const pageSize = scroller.clientHeight || 300;
+        let prevScrollTop = -1;
         for (let i = 0; i < 500; i++) {
-          const { max, setsize } = getMaxPosinset();
-          if (setsize > 0 && max >= setsize) break;
-          // Scroll one page at a time so virtual list renders each section
           scroller.scrollTop += pageSize;
           await new Promise(r => setTimeout(r, 200));
-          const { max: newMax } = getMaxPosinset();
-          if (newMax === prevMax) {
-            if (++stuck > 10) break;
-          } else {
-            stuck = 0;
-            prevMax = newMax;
-          }
+          // Stop when scroll position no longer advances (reached physical bottom)
+          if (scroller.scrollTop === prevScrollTop) break;
+          prevScrollTop = scroller.scrollTop;
         }
       }
     }
