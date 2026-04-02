@@ -3,9 +3,10 @@
   "name": "Transcript Extractor",
   "version": "1.0.0",
   "description": "Extract transcripts from Microsoft Teams recordings and Google Drive videos",
-  "permissions": [],
+  "permissions": ["storage"],
   "host_permissions": [
     "*://*.microsoft.com/*",
+    "*://*.sharepoint.com/*",
     "*://drive.google.com/*"
   ],
   "background": {
@@ -15,20 +16,24 @@
     {
       "matches": [
         "*://*.microsoft.com/*",
+        "*://*.sharepoint.com/*",
         "*://drive.google.com/*"
       ],
       "js": ["injected.js"],
       "run_at": "document_start",
-      "world": "MAIN"
+      "world": "MAIN",
+      "all_frames": true
     },
     {
       "matches": [
         "*://*.microsoft.com/*",
+        "*://*.sharepoint.com/*",
         "*://drive.google.com/*"
       ],
       "js": ["parser.js", "content.js"],
       "run_at": "document_start",
-      "world": "ISOLATED"
+      "world": "ISOLATED",
+      "all_frames": true
     }
   ],
   "commands": {
