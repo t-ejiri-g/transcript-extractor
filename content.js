@@ -8,6 +8,7 @@
     if (event.source !== window) return;
     if (event.origin !== location.origin) return;
     if (event.data && event.data.type === 'TRANSCRIPT_DATA') {
+      // Always overwrite with latest — the most recent response is the most complete
       transcriptData = event.data;
     }
   });
@@ -16,7 +17,7 @@
   chrome.runtime.onMessage.addListener(function (message) {
     if (message.action !== 'download') return;
 
-    if (!transcriptData) {
+    if (!transcriptData || !transcriptData.content) {
       alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
       return;
     }

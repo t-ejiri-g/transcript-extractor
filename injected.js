@@ -18,7 +18,7 @@
   function emit(url, content) {
     window.postMessage(
       { type: 'TRANSCRIPT_DATA', format: guessFormat(url), content },
-      '*'
+      location.origin
     );
   }
 
