@@ -3,73 +3,96 @@
 
   // --- Teams transcript DOM scraper (with auto-scroll for virtualized list) ---
   async function scrapeTeamsTranscript() {
-    const results = [];
-    let currentSpeaker = '';
-    let currentTimestamp = '';
+    // Use a Map keyed by sub-entry element ID for deduplication.
+    // JS Maps preserve insertion order, so items added earlier (smaller scrollTop)
+    // appear first — which matches the transcript's chronological order.
+    const itemMap = new Map();
 
-    // Find scrollable container to trigger virtual item loading
-    const firstEntry = document.querySelector('[id^="sub-entry-"]');
-    if (firstEntry) {
-      let container = firstEntry.parentElement;
-      while (container && container !== document.body) {
-        const { overflowY, overflow } = window.getComputedStyle(container);
-        if (overflowY === 'auto' || overflowY === 'scroll' ||
-            overflow === 'auto' || overflow === 'scroll') break;
-        container = container.parentElement;
-      }
-      const scroller = (container && container !== document.body) ? container : null;
-
-      if (scroller) {
-        // Guard against parallel scroll loops (e.g. duplicate message listeners)
-        if (scroller._scraping) return null;
-        scroller._scraping = true;
-
-        try {
-          const pageSize = scroller.clientHeight || 300;
-          let prevScrollTop = -1;
-          for (let i = 0; i < 500; i++) {
-            scroller.scrollTop += pageSize;
-            await new Promise(r => setTimeout(r, 200));
-            // Stop when scroll position no longer advances (reached physical bottom)
-            if (scroller.scrollTop === prevScrollTop) break;
-            prevScrollTop = scroller.scrollTop;
+    function collectVisible() {
+      // Walk the currently-rendered DOM and add newly-visible items to the map.
+      // Items already in the map are skipped (first-seen = correct order).
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode(node) {
+            const id = node.id || '';
+            const cls = typeof node.className === 'string' ? node.className : '';
+            if (cls.includes('itemDisplayName')) return NodeFilter.FILTER_ACCEPT;
+            if (id.startsWith('Header-timestamp-')) return NodeFilter.FILTER_ACCEPT;
+            if (id.startsWith('sub-entry-')) return NodeFilter.FILTER_ACCEPT;
+            return NodeFilter.FILTER_SKIP;
           }
-        } finally {
-          scroller._scraping = false;
+        }
+      );
+      let speaker = '', timestamp = '';
+      let node;
+      while ((node = walker.nextNode())) {
+        const id = node.id || '';
+        const cls = typeof node.className === 'string' ? node.className : '';
+        if (cls.includes('itemDisplayName')) {
+          speaker = node.textContent.trim();
+        } else if (id.startsWith('Header-timestamp-')) {
+          timestamp = node.textContent.trim();
+        } else if (id.startsWith('sub-entry-')) {
+          if (!itemMap.has(id)) {
+            const text = node.textContent.trim();
+            if (text) itemMap.set(id, { timestamp, speaker, text });
+          }
         }
       }
     }
 
-    // Scrape the fully-loaded DOM
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_ELEMENT,
-      {
-        acceptNode(node) {
-          const id = node.id || '';
-          const cls = typeof node.className === 'string' ? node.className : '';
-          if (cls.includes('itemDisplayName')) return NodeFilter.FILTER_ACCEPT;
-          if (id.startsWith('Header-timestamp-')) return NodeFilter.FILTER_ACCEPT;
-          if (id.startsWith('sub-entry-')) return NodeFilter.FILTER_ACCEPT;
-          return NodeFilter.FILTER_SKIP;
-        }
-      }
-    );
+    // Find scrollable container
+    const firstEntry = document.querySelector('[id^="sub-entry-"]');
+    if (!firstEntry) return null;
 
-    let node;
-    while ((node = walker.nextNode())) {
-      const id = node.id || '';
-      const cls = typeof node.className === 'string' ? node.className : '';
-      if (cls.includes('itemDisplayName')) {
-        currentSpeaker = node.textContent.trim();
-      } else if (id.startsWith('Header-timestamp-')) {
-        currentTimestamp = node.textContent.trim();
-      } else if (id.startsWith('sub-entry-')) {
-        const text = node.textContent.trim();
-        if (text) results.push({ timestamp: currentTimestamp, speaker: currentSpeaker, text });
+    let container = firstEntry.parentElement;
+    while (container && container !== document.body) {
+      const { overflowY, overflow } = window.getComputedStyle(container);
+      if (overflowY === 'auto' || overflowY === 'scroll' ||
+          overflow === 'auto' || overflow === 'scroll') break;
+      container = container.parentElement;
+    }
+    const scroller = (container && container !== document.body) ? container : null;
+    console.log('[TE] scroller.clientHeight:', scroller ? scroller.clientHeight : 'N/A',
+                '/ scrollHeight:', scroller ? scroller.scrollHeight : 'N/A');
+
+    // Collect items currently visible before any scrolling
+    collectVisible();
+    console.log('[TE] initial collect:', itemMap.size, 'items');
+
+    if (scroller && !scroller._scraping) {
+      scroller._scraping = true;
+      try {
+        const pageSize = scroller.clientHeight || 300;
+        let prevScrollTop = -1;
+        let stuckCount = 0;
+        for (let i = 0; i < 1000; i++) {
+          scroller.scrollTop += pageSize;
+          scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 400));
+          collectVisible();
+          const currentScrollTop = scroller.scrollTop;
+          console.log('[TE] step', i, '- scrollTop:', currentScrollTop, '/ collected:', itemMap.size);
+          if (currentScrollTop === prevScrollTop) {
+            stuckCount++;
+            if (stuckCount >= 3) {
+              console.log('[TE] scroll reached bottom at step', i);
+              break;
+            }
+          } else {
+            stuckCount = 0;
+          }
+          prevScrollTop = currentScrollTop;
+        }
+      } finally {
+        scroller._scraping = false;
+        console.log('[TE] done. Total collected:', itemMap.size);
       }
     }
 
+    const results = Array.from(itemMap.values());
     return results.length > 0 ? results : null;
   }
 
@@ -91,12 +114,21 @@
   if (window !== window.top) {
     chrome.runtime.onMessage.addListener(function (message) {
       if (message.action !== 'download') return;
+      // Only act in the iframe that actually contains transcript items.
+      // Other iframes (e.g. nav, sidebar) will have no sub-entry-* elements and should be skipped.
+      if (!document.querySelector('[id^="sub-entry-"]') && !document.querySelector('[class*="itemDisplayName"]')) {
+        console.log('[TE] iframe has no transcript content, skipping');
+        return;
+      }
+      console.log('[TE] transcript iframe handling download command');
       scrapeTeamsTranscript().then(function (cues) {
         if (!cues) return;
         // DOM-scraped content overwrites any network capture
         chrome.storage.local.set({
           transcriptData: { format: 'dom', content: formatTranscript(cues) }
         });
+      }).catch(function (err) {
+        console.error('[TE] scrapeTeamsTranscript error:', err);
       });
     });
     return;
