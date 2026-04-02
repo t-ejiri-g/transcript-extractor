@@ -1,4 +1,5 @@
 function isTranscriptUrl(url) {
+  if (typeof url !== 'string') return false;
   return (
     url.includes('.vtt') ||
     url.includes('/transcript') ||
@@ -8,7 +9,7 @@ function isTranscriptUrl(url) {
 }
 
 function parseVTT(rawText) {
-  const lines = rawText.split('\n');
+  const lines = rawText.replace(/\r\n/g, '\n').split('\n');
   const results = [];
   let i = 0;
 

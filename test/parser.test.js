@@ -20,6 +20,11 @@ describe('isTranscriptUrl', () => {
   test('does not match unrelated URL', () => {
     expect(isTranscriptUrl('https://drive.google.com/file/d/abc/view')).toBe(false);
   });
+
+  test('returns false for non-string input', () => {
+    expect(isTranscriptUrl(null)).toBe(false);
+    expect(isTranscriptUrl(undefined)).toBe(false);
+  });
 });
 
 describe('parseVTT', () => {
@@ -91,6 +96,12 @@ Text
   test('ignores empty input', () => {
     expect(parseVTT('')).toEqual([]);
     expect(parseVTT('WEBVTT\n\n')).toEqual([]);
+  });
+
+  test('handles CRLF line endings', () => {
+    const vtt = "WEBVTT\r\n\r\n00:00:01.000 --> 00:00:02.000\r\n<v Alice>Hello\r\n\r\n";
+    const result = parseVTT(vtt);
+    expect(result).toEqual([{ timestamp: '00:00:01', speaker: 'Alice', text: 'Hello' }]);
   });
 });
 
