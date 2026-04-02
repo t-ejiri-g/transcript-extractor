@@ -6,6 +6,7 @@
   // Receive transcript data posted by injected.js (MAIN world)
   window.addEventListener('message', function (event) {
     if (event.source !== window) return;
+    // Safe: host_permissions only match HTTPS origins (Teams, Drive) — location.origin is never "null"
     if (event.origin !== location.origin) return;
     if (event.data && event.data.type === 'TRANSCRIPT_DATA') {
       // Always overwrite with latest — the most recent response is the most complete

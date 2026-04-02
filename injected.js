@@ -11,14 +11,17 @@
     );
   }
 
-  function guessFormat(url) {
-    return url.includes('.vtt') ? 'vtt' : 'unknown';
+  function guessFormat(url, content) {
+    if (url.includes('.vtt') || content.trimStart().startsWith('WEBVTT')) {
+      return 'vtt';
+    }
+    return 'unknown';
   }
 
   function emit(url, content) {
     window.postMessage(
-      { type: 'TRANSCRIPT_DATA', format: guessFormat(url), content },
-      location.origin
+      { type: 'TRANSCRIPT_DATA', format: guessFormat(url, content), content },
+      location.origin  // Safe: host_permissions only match HTTPS origins (Teams, Drive)
     );
   }
 
