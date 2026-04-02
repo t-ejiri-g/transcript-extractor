@@ -6,7 +6,6 @@
   "permissions": [],
   "host_permissions": [
     "*://*.microsoft.com/*",
-    "*://*.teams.microsoft.com/*",
     "*://drive.google.com/*"
   ],
   "background": {
@@ -16,7 +15,6 @@
     {
       "matches": [
         "*://*.microsoft.com/*",
-        "*://*.teams.microsoft.com/*",
         "*://drive.google.com/*"
       ],
       "js": ["injected.js"],
@@ -26,11 +24,11 @@
     {
       "matches": [
         "*://*.microsoft.com/*",
-        "*://*.teams.microsoft.com/*",
         "*://drive.google.com/*"
       ],
       "js": ["parser.js", "content.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "world": "ISOLATED"
     }
   ],
   "commands": {
