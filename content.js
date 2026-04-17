@@ -8,38 +8,60 @@
     // appear first — which matches the transcript's chronological order.
     const itemMap = new Map();
 
+    // Track the last known good timestamp and speaker.
+    // Fallback when the virtualized list doesn't render the header for a group.
+    let lastTimestamp = '';
+    let lastSpeaker = '';
+
+    // Extract numeric suffix from element id (e.g. "listItem-585" → 585)
+    function idNum(el) {
+      const m = el && el.id && el.id.match(/(\d+)$/);
+      return m ? parseInt(m[1], 10) : -1;
+    }
+
     function collectVisible() {
-      // Walk the currently-rendered DOM and add newly-visible items to the map.
-      // Items already in the map are skipped (first-seen = correct order).
-      const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_ELEMENT,
-        {
-          acceptNode(node) {
-            const id = node.id || '';
-            const cls = typeof node.className === 'string' ? node.className : '';
-            if (cls.includes('itemDisplayName')) return NodeFilter.FILTER_ACCEPT;
-            if (id.startsWith('Header-timestamp-')) return NodeFilter.FILTER_ACCEPT;
-            if (id.startsWith('sub-entry-')) return NodeFilter.FILTER_ACCEPT;
-            return NodeFilter.FILTER_SKIP;
+      const entries = document.querySelectorAll('[id^="sub-entry-"]');
+      for (const entry of entries) {
+        if (itemMap.has(entry.id)) continue;
+        const text = entry.textContent.trim();
+        if (!text) continue;
+
+        // Find the listItem container for this entry
+        const listItem = entry.closest('[id^="listItem-"]');
+        let tsNode = null, spNode = null;
+
+        if (listItem) {
+          // 1) Look inside this listItem first
+          tsNode = listItem.querySelector('[id^="Header-timestamp-"]');
+          spNode = listItem.querySelector('[class*="itemDisplayName"]');
+
+          // 2) Walk backward through preceding listItem siblings,
+          //    but only nearby ones (skip items far away in transcript order
+          //    which the virtualized list keeps pinned, e.g. listItem-1).
+          const myNum = idNum(listItem);
+          let prev = listItem.previousElementSibling;
+          while (prev && (!tsNode || !spNode)) {
+            const prevNum = idNum(prev);
+            // Stop if this sibling is far away in transcript order
+            if (prevNum >= 0 && myNum - prevNum > 50) break;
+            if (!tsNode) {
+              tsNode = prev.querySelector('[id^="Header-timestamp-"]');
+            }
+            if (!spNode) {
+              spNode = prev.querySelector('[class*="itemDisplayName"]');
+            }
+            prev = prev.previousElementSibling;
           }
         }
-      );
-      let speaker = '', timestamp = '';
-      let node;
-      while ((node = walker.nextNode())) {
-        const id = node.id || '';
-        const cls = typeof node.className === 'string' ? node.className : '';
-        if (cls.includes('itemDisplayName')) {
-          speaker = node.textContent.trim();
-        } else if (id.startsWith('Header-timestamp-')) {
-          timestamp = node.textContent.trim();
-        } else if (id.startsWith('sub-entry-')) {
-          if (!itemMap.has(id)) {
-            const text = node.textContent.trim();
-            if (text) itemMap.set(id, { timestamp, speaker, text });
-          }
-        }
+
+        const timestamp = tsNode ? tsNode.textContent.trim() : lastTimestamp;
+        const speaker = spNode ? spNode.textContent.trim() : lastSpeaker;
+
+        // Update last known good values
+        if (tsNode) lastTimestamp = timestamp;
+        if (spNode) lastSpeaker = speaker;
+
+        itemMap.set(entry.id, { timestamp, speaker, text });
       }
     }
 
@@ -68,12 +90,28 @@
         const pageSize = scroller.clientHeight || 300;
         let prevScrollTop = -1;
         let stuckCount = 0;
+        let maxScrollTop = 0;  // track furthest position reached
         for (let i = 0; i < 1000; i++) {
           scroller.scrollTop += pageSize;
           scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
           await new Promise(r => setTimeout(r, 400));
-          collectVisible();
           const currentScrollTop = scroller.scrollTop;
+
+          // Detect virtualized list reset (scrollTop jumped backwards)
+          if (currentScrollTop < maxScrollTop - pageSize) {
+            console.log('[TE] step', i, '- scroll reset detected (scrollTop:', currentScrollTop,
+                        '< maxScrollTop:', maxScrollTop, '), jumping ahead');
+            scroller.scrollTop = maxScrollTop;
+            scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 400));
+            // Continue from where we left off — skip collecting on reset step
+            prevScrollTop = scroller.scrollTop;
+            if (scroller.scrollTop > maxScrollTop) maxScrollTop = scroller.scrollTop;
+            continue;
+          }
+
+          if (currentScrollTop > maxScrollTop) maxScrollTop = currentScrollTop;
+          collectVisible();
           console.log('[TE] step', i, '- scrollTop:', currentScrollTop, '/ collected:', itemMap.size);
           if (currentScrollTop === prevScrollTop) {
             stuckCount++;
