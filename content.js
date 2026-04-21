@@ -1,6 +1,32 @@
 (function () {
   'use strict';
 
+  function sendBackgroundMessage(message) {
+    return new Promise(resolve => {
+      chrome.runtime.sendMessage(message, response => {
+        if (chrome.runtime.lastError) {
+          console.warn('[TE] background message failed:', chrome.runtime.lastError.message);
+          resolve(null);
+          return;
+        }
+        resolve(response || null);
+      });
+    });
+  }
+
+  function saveTranscriptData(data) {
+    return sendBackgroundMessage({ action: 'saveTranscriptData', data });
+  }
+
+  async function getTranscriptData() {
+    const response = await sendBackgroundMessage({ action: 'getTranscriptData' });
+    return response && response.data;
+  }
+
+  function clearTranscriptData() {
+    return sendBackgroundMessage({ action: 'clearTranscriptData' });
+  }
+
   // --- Teams transcript DOM scraper (with auto-scroll for virtualized list) ---
   async function scrapeTeamsTranscript() {
     // Use a Map keyed by sub-entry element ID for deduplication.
@@ -142,7 +168,7 @@
     if (event.data && event.data.type === 'TRANSCRIPT_DATA') {
       // Skip unrecognized binary (format: 'unknown') — only save parseable formats
       if (event.data.format !== 'unknown') {
-        chrome.storage.local.set({ transcriptData: event.data });
+        saveTranscriptData(event.data);
       }
     }
   });
@@ -152,6 +178,7 @@
   if (window !== window.top) {
     chrome.runtime.onMessage.addListener(function (message) {
       if (message.action !== 'download') return;
+      const requestId = message.requestId;
       // Only act in the iframe that actually contains transcript items.
       // Other iframes (e.g. nav, sidebar) will have no sub-entry-* elements and should be skipped.
       if (!document.querySelector('[id^="sub-entry-"]') && !document.querySelector('[class*="itemDisplayName"]')) {
@@ -162,9 +189,10 @@
       scrapeTeamsTranscript().then(function (cues) {
         if (!cues) return;
         // DOM-scraped content overwrites any network capture
-        chrome.storage.local.set({
-          transcriptData: { format: 'dom', content: formatTranscript(cues) }
-        });
+        saveTranscriptData(attachRequestId({
+          format: 'dom',
+          content: formatTranscript(cues)
+        }, requestId));
       }).catch(function (err) {
         console.error('[TE] scrapeTeamsTranscript error:', err);
       });
@@ -175,34 +203,33 @@
   // --- Top-level frame: download handler ---
   chrome.runtime.onMessage.addListener(function (message) {
     if (message.action !== 'download') return;
+    const requestId = message.requestId;
 
     // Only use pre-existing network-captured data (pb3/vtt) immediately.
     // 'dom' format is from a previous scrape — ignore it and wait for a fresh one.
-    chrome.storage.local.get(['transcriptData'], function (result) {
-      const existing = result.transcriptData;
-      if (existing && existing.content && existing.format !== 'dom') {
+    getTranscriptData().then(function (existing) {
+      if (isImmediateTranscriptData(existing)) {
         triggerDownload(existing);
-        chrome.storage.local.remove('transcriptData');
+        clearTranscriptData();
         return;
       }
 
-      // Clear any stale dom data, then poll for fresh iframe scrape (Teams)
-      chrome.storage.local.remove('transcriptData', function () {
-        let attempts = 0;
-        const poll = setInterval(function () {
-          attempts++;
-          chrome.storage.local.get(['transcriptData'], function (r) {
-            if (r.transcriptData && r.transcriptData.content) {
-              clearInterval(poll);
-              triggerDownload(r.transcriptData);
-              chrome.storage.local.remove('transcriptData');
-            } else if (attempts > 240) {
-              clearInterval(poll);
-              alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
-            }
-          });
-        }, 500);
-      });
+      // Stale DOM data may exist from an earlier scrape. Keep it in place and
+      // only accept data produced for this download request.
+      let attempts = 0;
+      const poll = setInterval(function () {
+        attempts++;
+        getTranscriptData().then(function (transcriptData) {
+          if (hasMatchingRequestId(transcriptData, requestId)) {
+            clearInterval(poll);
+            triggerDownload(transcriptData);
+            clearTranscriptData();
+          } else if (attempts > 240) {
+            clearInterval(poll);
+            alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
+          }
+        });
+      }, 500);
     });
   });
 
