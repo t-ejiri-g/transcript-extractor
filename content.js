@@ -106,21 +106,29 @@
     console.log('[TE] scroller.clientHeight:', scroller ? scroller.clientHeight : 'N/A',
                 '/ scrollHeight:', scroller ? scroller.scrollHeight : 'N/A');
 
-    // Collect items currently visible before any scrolling
-    collectVisible();
-    console.log('[TE] initial collect:', itemMap.size, 'items');
+    const waitForScrollRender = () => new Promise(r => setTimeout(r, 400));
+
+    if (!scroller || scroller._scraping) {
+      collectVisible();
+      console.log('[TE] initial collect:', itemMap.size, 'items');
+    }
 
     if (scroller && !scroller._scraping) {
       scroller._scraping = true;
+      let originalScrollTop = 0;
       try {
+        originalScrollTop = await moveScrollerToTop(scroller, waitForScrollRender);
+        collectVisible();
+        console.log('[TE] initial collect from top:', itemMap.size, 'items');
+
         const pageSize = scroller.clientHeight || 300;
         let prevScrollTop = -1;
         let stuckCount = 0;
-        let maxScrollTop = 0;  // track furthest position reached
+        let maxScrollTop = scroller.scrollTop || 0;  // track furthest position reached
         for (let i = 0; i < 1000; i++) {
           scroller.scrollTop += pageSize;
           scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-          await new Promise(r => setTimeout(r, 400));
+          await waitForScrollRender();
           const currentScrollTop = scroller.scrollTop;
 
           // Detect virtualized list reset (scrollTop jumped backwards)
@@ -129,7 +137,7 @@
                         '< maxScrollTop:', maxScrollTop, '), jumping ahead');
             scroller.scrollTop = maxScrollTop;
             scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 400));
+            await waitForScrollRender();
             // Continue from where we left off — skip collecting on reset step
             prevScrollTop = scroller.scrollTop;
             if (scroller.scrollTop > maxScrollTop) maxScrollTop = scroller.scrollTop;
@@ -151,6 +159,7 @@
           prevScrollTop = currentScrollTop;
         }
       } finally {
+        await restoreScrollerPosition(scroller, originalScrollTop, waitForScrollRender);
         scroller._scraping = false;
         console.log('[TE] done. Total collected:', itemMap.size);
       }

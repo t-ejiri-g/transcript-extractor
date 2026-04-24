@@ -30,7 +30,7 @@
         "*://*.sharepoint.com/*",
         "*://drive.google.com/*"
       ],
-      "js": ["parser.js", "session.js", "content.js"],
+      "js": ["parser.js", "session.js", "scroll.js", "content.js"],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": true
