@@ -5,9 +5,9 @@
   "description": "Extract transcripts from Microsoft Teams recordings and Google Drive videos",
   "permissions": ["storage"],
   "host_permissions": [
-    "*://*.microsoft.com/*",
-    "*://*.sharepoint.com/*",
-    "*://drive.google.com/*"
+    "https://teams.microsoft.com/*",
+    "https://*.sharepoint.com/*",
+    "https://drive.google.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -15,9 +15,9 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.microsoft.com/*",
-        "*://*.sharepoint.com/*",
-        "*://drive.google.com/*"
+        "https://teams.microsoft.com/*",
+        "https://*.sharepoint.com/*",
+        "https://drive.google.com/*"
       ],
       "js": ["injected-helpers.js", "injected.js"],
       "run_at": "document_start",
@@ -26,9 +26,9 @@
     },
     {
       "matches": [
-        "*://*.microsoft.com/*",
-        "*://*.sharepoint.com/*",
-        "*://drive.google.com/*"
+        "https://teams.microsoft.com/*",
+        "https://*.sharepoint.com/*",
+        "https://drive.google.com/*"
       ],
       "js": ["parser.js", "session.js", "scroll.js", "content.js"],
       "run_at": "document_start",

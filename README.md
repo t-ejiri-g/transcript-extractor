@@ -55,11 +55,11 @@ npm test
 
 ## 権限
 
-この拡張機能は、対象ページで字幕・トランスクリプト関連の通信やDOMを読み取るため、以下のホスト権限を使います。
+この拡張機能は、対象ページで字幕・トランスクリプト関連の通信やDOMを読み取るため、以下のHTTPSホスト権限を使います。
 
-- `*://*.microsoft.com/*`
-- `*://*.sharepoint.com/*`
-- `*://drive.google.com/*`
+- `https://teams.microsoft.com/*`
+- `https://*.sharepoint.com/*`
+- `https://drive.google.com/*`
 
 取得したトランスクリプトデータはタブ単位で `chrome.storage.local` に一時保存され、ダウンロード後またはタブ終了時に削除されます。外部サーバーへの送信処理はありません。
 
