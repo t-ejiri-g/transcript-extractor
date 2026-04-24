@@ -57,12 +57,61 @@ function formatTranscript(cues) {
     .join('\n');
 }
 
-function generateFilename() {
+function sanitizeFilenamePart(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, ' __filename_separator__ ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*__filename_separator__\s*/g, ' - ')
+    .replace(/(?: - )+/g, ' - ')
+    .replace(/^[ .-]+|[ .-]+$/g, '')
+    .slice(0, 120)
+    .replace(/[ .-]+$/g, '');
+}
+
+function generateFilename(meetingTitle) {
   const now = new Date();
   const pad = n => String(n).padStart(2, '0');
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-  return `transcript_${date}_${time}.txt`;
+  const prefix = sanitizeFilenamePart(meetingTitle) || 'transcript';
+  return `${prefix}_${date}_${time}.txt`;
+}
+
+function getElementAttribute(element, name) {
+  if (!element) return '';
+  if (typeof element.getAttribute === 'function') {
+    return element.getAttribute(name) || '';
+  }
+  return element[name] || '';
+}
+
+function isVisibleElement(element) {
+  if (!element || typeof element.getClientRects !== 'function') return true;
+  return element.getClientRects().length > 0;
+}
+
+function selectMeetingTitleFromElements(elements) {
+  const candidates = Array.from(elements || [])
+    .map((element, index) => {
+      const title = getElementAttribute(element, 'title').trim();
+      const text = (element.textContent || '').trim();
+      if (!title || (text && text !== title)) return null;
+      return {
+        title,
+        index,
+        score: (isVisibleElement(element) ? 1000 : 0) + Math.min(title.length, 200)
+      };
+    })
+    .filter(Boolean);
+
+  candidates.sort((a, b) => b.score - a.score || a.index - b.index);
+  return candidates.length > 0 ? candidates[0].title : '';
+}
+
+function extractMeetingTitle(root) {
+  if (!root || typeof root.querySelectorAll !== 'function') return '';
+  return selectMeetingTitleFromElements(root.querySelectorAll('span[dir="auto"][title]'));
 }
 
 // Parse Google Drive caption format (wireMagic: "pb3")
@@ -87,5 +136,14 @@ function parseGoogleCaption(jsonText) {
 
 // Export for Node.js tests; no-op in browser (global scope)
 if (typeof module !== 'undefined') {
-  module.exports = { isTranscriptUrl, parseVTT, formatTranscript, generateFilename, parseGoogleCaption };
+  module.exports = {
+    isTranscriptUrl,
+    parseVTT,
+    formatTranscript,
+    sanitizeFilenamePart,
+    generateFilename,
+    selectMeetingTitleFromElements,
+    extractMeetingTitle,
+    parseGoogleCaption
+  };
 }

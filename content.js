@@ -191,7 +191,8 @@
         // DOM-scraped content overwrites any network capture
         saveTranscriptData(attachRequestId({
           format: 'dom',
-          content: formatTranscript(cues)
+          content: formatTranscript(cues),
+          meetingTitle: extractMeetingTitle(document)
         }, requestId));
       }).catch(function (err) {
         console.error('[TE] scrapeTeamsTranscript error:', err);
@@ -246,7 +247,7 @@
       text = data.content;
     }
 
-    const filename = generateFilename();
+    const filename = generateFilename(extractMeetingTitle(document) || (data && data.meetingTitle));
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -1,4 +1,10 @@
-const { parseVTT, formatTranscript, generateFilename, isTranscriptUrl } = require('../parser');
+const {
+  parseVTT,
+  formatTranscript,
+  generateFilename,
+  isTranscriptUrl,
+  selectMeetingTitleFromElements
+} = require('../parser');
 
 describe('isTranscriptUrl', () => {
   test('matches .vtt extension', () => {
@@ -129,5 +135,44 @@ describe('generateFilename', () => {
   test('returns filename with expected format', () => {
     const filename = generateFilename();
     expect(filename).toMatch(/^transcript_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$/);
+  });
+
+  test('prefixes the timestamp with a sanitized meeting title', () => {
+    const filename = generateFilename('【MTG】PAIM：KR1-1 成立定義書の「問いの立て方と論点設計」について');
+    expect(filename).toMatch(/^【MTG】PAIM：KR1-1 成立定義書の「問いの立て方と論点設計」について_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$/);
+  });
+
+  test('removes characters that are unsafe in downloaded filenames', () => {
+    const filename = generateFilename('Weekly / Project: Plan * Review?');
+    expect(filename).toMatch(/^Weekly - Project - Plan - Review_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$/);
+  });
+});
+
+describe('selectMeetingTitleFromElements', () => {
+  function span({ title, text = title, rects = [{}] }) {
+    return {
+      textContent: text,
+      getAttribute: name => (name === 'title' ? title : null),
+      getClientRects: () => rects
+    };
+  }
+
+  test('extracts the title from a matching Teams title span', () => {
+    const title = '【MTG】PAIM：KR1-1 成立定義書の「問いの立て方と論点設計」について';
+    expect(selectMeetingTitleFromElements([span({ title })])).toBe(title);
+  });
+
+  test('ignores tooltip-only title attributes whose text does not match', () => {
+    expect(selectMeetingTitleFromElements([
+      span({ title: 'Open in new window', text: 'Open' }),
+      span({ title: 'Team Weekly', text: 'Team Weekly' })
+    ])).toBe('Team Weekly');
+  });
+
+  test('prefers a visible matching element when hidden candidates appear first', () => {
+    expect(selectMeetingTitleFromElements([
+      span({ title: 'Hidden stale title', rects: [] }),
+      span({ title: 'Visible meeting title' })
+    ])).toBe('Visible meeting title');
   });
 });
