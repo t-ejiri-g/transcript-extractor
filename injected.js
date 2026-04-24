@@ -22,32 +22,6 @@
     return 'unknown';
   }
 
-  async function decodeBuffer(buffer) {
-    const bytes = new Uint8Array(buffer);
-    // If gzip magic bytes (1f 8b), decompress first
-    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-      try {
-        const ds = new DecompressionStream('gzip');
-        const writer = ds.writable.getWriter();
-        writer.write(bytes);
-        writer.close();
-        const chunks = [];
-        const reader = ds.readable.getReader();
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-        }
-        const total = chunks.reduce((n, c) => n + c.length, 0);
-        const merged = new Uint8Array(total);
-        let off = 0;
-        for (const c of chunks) { merged.set(c, off); off += c.length; }
-        return new TextDecoder().decode(merged);
-      } catch (e) { /* fall through to plain decode */ }
-    }
-    return new TextDecoder().decode(bytes);
-  }
-
   function emit(url, content) {
     window.postMessage(
       { type: 'TRANSCRIPT_DATA', format: guessFormat(url, content), content },
@@ -93,7 +67,9 @@
     if (isTranscriptUrl(this._transcriptUrl || '') && !this._transcriptListenerAdded) {
       this._transcriptListenerAdded = true;
       this.addEventListener('load', function () {
-        emit(this._transcriptUrl, this.responseText);
+        getXhrResponseContent(this)
+          .then(content => { if (content) emit(this._transcriptUrl, content); })
+          .catch(() => {});
       });
     }
     return originalSend.apply(this, args);

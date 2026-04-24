@@ -19,7 +19,7 @@
         "*://*.sharepoint.com/*",
         "*://drive.google.com/*"
       ],
-      "js": ["injected.js"],
+      "js": ["injected-helpers.js", "injected.js"],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": true
