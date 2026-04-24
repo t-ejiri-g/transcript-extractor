@@ -3,7 +3,10 @@ const {
   formatTranscript,
   generateFilename,
   isTranscriptUrl,
-  selectMeetingTitleFromElements
+  selectMeetingTitleFromElements,
+  extractMeetingTitle,
+  parseTranscriptAriaLabel,
+  hasTranscriptContent
 } = require('../parser');
 
 describe('isTranscriptUrl', () => {
@@ -174,5 +177,46 @@ describe('selectMeetingTitleFromElements', () => {
       span({ title: 'Hidden stale title', rects: [] }),
       span({ title: 'Visible meeting title' })
     ])).toBe('Visible meeting title');
+  });
+});
+
+describe('extractMeetingTitle', () => {
+  test('extracts the SharePoint document title text', () => {
+    const root = {
+      querySelectorAll: selector => {
+        if (selector === 'span[data-unique-id="DocumentTitleContent"]') {
+          return [{ textContent: '【MTG】PAIM：KR1-1 成立定義書の「問いの立て方と論点設計」について-20260424_123019-会議の録音' }];
+        }
+        return [];
+      }
+    };
+
+    expect(extractMeetingTitle(root)).toBe('【MTG】PAIM：KR1-1 成立定義書の「問いの立て方と論点設計」について-20260424_123019-会議の録音');
+  });
+});
+
+describe('parseTranscriptAriaLabel', () => {
+  test('extracts speaker and timestamp from SharePoint transcript aria label', () => {
+    expect(parseTranscriptAriaLabel('江尻 登志王民 0 分間 4 秒間')).toEqual({
+      speaker: '江尻 登志王民',
+      timestamp: '0:04'
+    });
+  });
+
+  test('handles hour duration labels', () => {
+    expect(parseTranscriptAriaLabel('竹下 貴之 1 時間 2 分間 3 秒間')).toEqual({
+      speaker: '竹下 貴之',
+      timestamp: '1:02:03'
+    });
+  });
+});
+
+describe('hasTranscriptContent', () => {
+  test('detects SharePoint transcript entries', () => {
+    const root = {
+      querySelector: selector => selector === '[id^="sub-entry-"]' ? {} : null
+    };
+
+    expect(hasTranscriptContent(root)).toBe(true);
   });
 });

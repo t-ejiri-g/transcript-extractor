@@ -54,6 +54,12 @@
 
         // Find the listItem container for this entry
         const listItem = entry.closest('[id^="listItem-"]');
+        const entryGroup = entry.closest('[id^="entry-"]');
+        const ariaMetadata = parseTranscriptAriaLabel(
+          (entryGroup && entryGroup.getAttribute('aria-label')) ||
+          (listItem && listItem.querySelector('[id^="timestampSpeakerAriaLabel-"]') || {}).textContent ||
+          ''
+        );
         let tsNode = null, spNode = null;
 
         if (listItem) {
@@ -80,12 +86,12 @@
           }
         }
 
-        const timestamp = tsNode ? tsNode.textContent.trim() : lastTimestamp;
-        const speaker = spNode ? spNode.textContent.trim() : lastSpeaker;
+        const timestamp = tsNode ? tsNode.textContent.trim() : (ariaMetadata.timestamp || lastTimestamp);
+        const speaker = spNode ? spNode.textContent.trim() : (ariaMetadata.speaker || lastSpeaker);
 
         // Update last known good values
-        if (tsNode) lastTimestamp = timestamp;
-        if (spNode) lastSpeaker = speaker;
+        if (timestamp) lastTimestamp = timestamp;
+        if (speaker) lastSpeaker = speaker;
 
         itemMap.set(entry.id, { timestamp, speaker, text });
       }
@@ -95,14 +101,7 @@
     const firstEntry = document.querySelector('[id^="sub-entry-"]');
     if (!firstEntry) return null;
 
-    let container = firstEntry.parentElement;
-    while (container && container !== document.body) {
-      const { overflowY, overflow } = window.getComputedStyle(container);
-      if (overflowY === 'auto' || overflowY === 'scroll' ||
-          overflow === 'auto' || overflow === 'scroll') break;
-      container = container.parentElement;
-    }
-    const scroller = (container && container !== document.body) ? container : null;
+    const scroller = findTranscriptScroller(firstEntry);
     console.log('[TE] scroller.clientHeight:', scroller ? scroller.clientHeight : 'N/A',
                 '/ scrollHeight:', scroller ? scroller.scrollHeight : 'N/A');
 
@@ -190,7 +189,7 @@
       const requestId = message.requestId;
       // Only act in the iframe that actually contains transcript items.
       // Other iframes (e.g. nav, sidebar) will have no sub-entry-* elements and should be skipped.
-      if (!document.querySelector('[id^="sub-entry-"]') && !document.querySelector('[class*="itemDisplayName"]')) {
+      if (!hasTranscriptContent(document)) {
         console.log('[TE] iframe has no transcript content, skipping');
         return;
       }
@@ -210,6 +209,23 @@
     return;
   }
 
+  function pollForTranscriptData(requestId) {
+    let attempts = 0;
+    const poll = setInterval(function () {
+      attempts++;
+      getTranscriptData().then(function (transcriptData) {
+        if (hasMatchingRequestId(transcriptData, requestId)) {
+          clearInterval(poll);
+          triggerDownload(transcriptData);
+          clearTranscriptData();
+        } else if (attempts > 240) {
+          clearInterval(poll);
+          alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
+        }
+      });
+    }, 500);
+  }
+
   // --- Top-level frame: download handler ---
   chrome.runtime.onMessage.addListener(function (message) {
     if (message.action !== 'download') return;
@@ -224,22 +240,30 @@
         return;
       }
 
+      if (hasTranscriptContent(document)) {
+        console.log('[TE] top frame handling transcript DOM scrape');
+        scrapeTeamsTranscript().then(function (cues) {
+          if (!cues) {
+            pollForTranscriptData(requestId);
+            return;
+          }
+          triggerDownload({
+            format: 'dom',
+            content: formatTranscript(cues),
+            meetingTitle: extractMeetingTitle(document),
+            requestId
+          });
+          clearTranscriptData();
+        }).catch(function (err) {
+          console.error('[TE] top frame scrapeTeamsTranscript error:', err);
+          pollForTranscriptData(requestId);
+        });
+        return;
+      }
+
       // Stale DOM data may exist from an earlier scrape. Keep it in place and
       // only accept data produced for this download request.
-      let attempts = 0;
-      const poll = setInterval(function () {
-        attempts++;
-        getTranscriptData().then(function (transcriptData) {
-          if (hasMatchingRequestId(transcriptData, requestId)) {
-            clearInterval(poll);
-            triggerDownload(transcriptData);
-            clearTranscriptData();
-          } else if (attempts > 240) {
-            clearInterval(poll);
-            alert('トランスクリプトが見つかりません。先に録画ページを開いてください。');
-          }
-        });
-      }, 500);
+      pollForTranscriptData(requestId);
     });
   });
 

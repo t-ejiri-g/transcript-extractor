@@ -109,9 +109,52 @@ function selectMeetingTitleFromElements(elements) {
   return candidates.length > 0 ? candidates[0].title : '';
 }
 
+function selectTextFromElements(elements) {
+  const candidates = Array.from(elements || [])
+    .map((element, index) => {
+      const text = (element.textContent || '').trim();
+      if (!text) return null;
+      return {
+        text,
+        index,
+        score: (isVisibleElement(element) ? 1000 : 0) + Math.min(text.length, 200)
+      };
+    })
+    .filter(Boolean);
+
+  candidates.sort((a, b) => b.score - a.score || a.index - b.index);
+  return candidates.length > 0 ? candidates[0].text : '';
+}
+
 function extractMeetingTitle(root) {
   if (!root || typeof root.querySelectorAll !== 'function') return '';
+  const sharePointTitle = selectTextFromElements(root.querySelectorAll('span[data-unique-id="DocumentTitleContent"]'));
+  if (sharePointTitle) return sharePointTitle;
   return selectMeetingTitleFromElements(root.querySelectorAll('span[dir="auto"][title]'));
+}
+
+function formatDurationTimestamp(hours, minutes, seconds) {
+  const h = Number(hours || 0);
+  const m = Number(minutes || 0);
+  const s = Number(seconds || 0);
+  const pad = n => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function parseTranscriptAriaLabel(label) {
+  if (typeof label !== 'string') return { speaker: '', timestamp: '' };
+  const match = label.trim().match(/^(.*?)\s*(?:(\d+)\s*時間\s*)?(?:(\d+)\s*分間?\s*)?(?:(\d+)\s*秒間?)\s*$/);
+  if (!match || !match[4]) return { speaker: '', timestamp: '' };
+
+  return {
+    speaker: (match[1] || '').trim(),
+    timestamp: formatDurationTimestamp(match[2], match[3], match[4])
+  };
+}
+
+function hasTranscriptContent(root) {
+  if (!root || typeof root.querySelector !== 'function') return false;
+  return Boolean(root.querySelector('[id^="sub-entry-"]') || root.querySelector('[class*="itemDisplayName"]'));
 }
 
 // Parse Google Drive caption format (wireMagic: "pb3")
@@ -143,7 +186,10 @@ if (typeof module !== 'undefined') {
     sanitizeFilenamePart,
     generateFilename,
     selectMeetingTitleFromElements,
+    selectTextFromElements,
     extractMeetingTitle,
+    parseTranscriptAriaLabel,
+    hasTranscriptContent,
     parseGoogleCaption
   };
 }

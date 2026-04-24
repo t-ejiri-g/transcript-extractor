@@ -1,4 +1,5 @@
 const {
+  findTranscriptScroller,
   moveScrollerToTop,
   restoreScrollerPosition
 } = require('../scroll');
@@ -11,6 +12,15 @@ function createScroller(scrollTop) {
 }
 
 describe('transcript scroller helpers', () => {
+  test('finds SharePoint transcript scroll containers marked as scrollable', () => {
+    const scroller = createScroller(0);
+    const firstEntry = {
+      closest: jest.fn(selector => selector.includes('[data-is-scrollable="true"]') ? scroller : null)
+    };
+
+    expect(findTranscriptScroller(firstEntry)).toBe(scroller);
+  });
+
   test('moves the scroller to the top before scraping', async () => {
     const scroller = createScroller(640);
     const wait = jest.fn(async () => {});
